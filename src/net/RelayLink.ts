@@ -54,7 +54,12 @@ export class RelayLink {
   onPeerJoined: (() => void) | null = null;
   onPeerLeft: (() => void) | null = null;
   /** Fired once, when the link is finally given up (explicit close or reconnect window over). */
-  onCloseHandler: ((reason: 'closed' | 'failed') => void) | null = null;
+  onCloseHandler: ((reason: 'closed' | 'failed' | 'idle') => void) | null = null;
+  /**
+   * The relay closed the room after its no-input timeout. Fired right after onCloseHandler,
+   * so its dialog replaces the generic "disconnected" one.
+   */
+  onIdle: (() => void) | null = null;
   /** Reconnect attempt in progress (UI can show "reconnecting…"). */
   onReconnecting: ((attempt: number) => void) | null = null;
 
@@ -133,6 +138,11 @@ export class RelayLink {
           this.finish('closed');
           return;
         }
+        if (ev.code === 4001) {
+          // The relay shut the room down after a long stretch without input; it is gone.
+          this.finish('idle');
+          return;
+        }
         this.scheduleReconnect();
       };
       ws.onerror = () => {
@@ -160,12 +170,13 @@ export class RelayLink {
     }, delay);
   }
 
-  private finish(reason: 'closed' | 'failed'): void {
+  private finish(reason: 'closed' | 'failed' | 'idle'): void {
     if (this.closed) return;
     this.closed = true;
     clearInterval(this.heartbeat);
     clearTimeout(this.reconnectTimer);
     this.onCloseHandler?.(reason);
+    if (reason === 'idle') this.onIdle?.();
   }
 
   send(msg: unknown): void {

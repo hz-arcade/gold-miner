@@ -98,6 +98,7 @@ export const en = {
   'online.hostLeft': 'The host disconnected.',
   'online.hostWaiting': 'Waiting for them to come back…',
   'online.hostGone': 'The host left the game.',
+  'online.idleClosed': 'The room closed after 15 minutes without play.',
   'online.continueAlone': 'Continue alone',
   'online.waitingHostNext': 'Waiting for the host…',
   'online.youAre': 'You are player {n}',

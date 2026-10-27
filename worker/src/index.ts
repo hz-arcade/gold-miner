@@ -26,6 +26,13 @@ const IDLE_TTL_MS = 2 * 60 * 60 * 1000;
 /** A freshly created room the host never connected to expires sooner. */
 const UNUSED_TTL_MS = 10 * 60 * 1000;
 /**
+ * A room with sockets but no player input for this long is closed (4001) and deleted, so
+ * tabs left open on the level intro or the lobby stop costing anything.
+ */
+const NO_INPUT_TTL_MS = 15 * 60 * 1000;
+/** Last-input time is persisted at most this often, so a hibernated room still knows it. */
+const INPUT_PERSIST_MS = 60 * 1000;
+/**
  * Per-socket message budget (token bucket). The host streams 20 snapshots/s plus a few
  * events, the guest sends only taps, so this leaves plenty of headroom for real play.
  */
@@ -120,6 +127,15 @@ export default {
 
 type Role = 'host' | 'guest';
 
+/**
+ * Whether a relayed message reflects a player doing something. Everything the guest sends
+ * is input; from the host, the 20/s snapshots and the once-a-second timer ticks are not.
+ */
+function isPlayerInput(role: Role, message: string): boolean {
+  if (role === 'guest') return true;
+  return !message.startsWith('{"t":"s",') && !message.startsWith('{"t":"ev","k":"tick"');
+}
+
 interface Attachment {
   room: string;
   role: Role;
@@ -137,6 +153,17 @@ interface Usage {
 
 export class Room extends DurableObject<Env> {
   private usage = new Map<WebSocket, Usage>();
+  /** Last player input (or connect), in memory; see INPUT_PERSIST_MS. */
+  private lastInput = 0;
+  private lastInputSaved = 0;
+
+  private async noteInput(): Promise<void> {
+    const now = Date.now();
+    this.lastInput = now;
+    if (now - this.lastInputSaved < INPUT_PERSIST_MS) return;
+    this.lastInputSaved = now;
+    await this.ctx.storage.put('input', now);
+  }
 
   /** Host creates the room. Returns false if the code is already in use. */
   async create(): Promise<boolean> {
@@ -188,7 +215,9 @@ export class Room extends DurableObject<Env> {
     server.serializeAttachment({ room, role, ip: clientIp(req), since: Date.now() } satisfies Attachment);
     // Keepalive without waking the object: the runtime answers pings itself.
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
-    await this.ctx.storage.deleteAlarm();
+    this.lastInputSaved = 0; // a connect always persists
+    await this.noteInput();
+    await this.ctx.storage.setAlarm(Date.now() + NO_INPUT_TTL_MS);
 
     const peer = this.socketFor(role === 'host' ? 'guest' : 'host');
     server.send(JSON.stringify({ t: 'relay', k: 'welcome', role, peer: peer !== null }));
@@ -211,6 +240,7 @@ export class Room extends DurableObject<Env> {
       }
       return;
     }
+    if (isPlayerInput(a.role, message)) await this.noteInput();
     const peer = this.socketFor(a.role === 'host' ? 'guest' : 'host');
     if (peer) {
       try {
@@ -275,13 +305,35 @@ export class Room extends DurableObject<Env> {
     // 4000 = replaced by a reconnect of the same role: the peer never notices.
     if (a && code !== 4000) {
       const peer = this.socketFor(a.role === 'host' ? 'guest' : 'host');
-      if (peer) peer.send(JSON.stringify({ t: 'relay', k: 'peer-left', role: a.role }));
+      try {
+        peer?.send(JSON.stringify({ t: 'relay', k: 'peer-left', role: a.role }));
+      } catch {
+        /* closing too (idle shutdown closes both) */
+      }
     }
     if (this.ctx.getWebSockets().length === 0) await this.ctx.storage.setAlarm(Date.now() + IDLE_TTL_MS);
   }
 
   override async alarm(): Promise<void> {
-    if (this.ctx.getWebSockets().length > 0) return;
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length > 0) {
+      // Live room: the alarm is the no-input check.
+      const last = Math.max(this.lastInput, (await this.ctx.storage.get<number>('input')) ?? 0);
+      if (Date.now() - last < NO_INPUT_TTL_MS) {
+        await this.ctx.storage.setAlarm(last + NO_INPUT_TTL_MS);
+        return;
+      }
+      const room = (sockets[0]?.deserializeAttachment() as Attachment | null)?.room;
+      console.log(JSON.stringify({ ev: 'room-idle', room, idleSecs: Math.round((Date.now() - last) / 1000) }));
+      for (const ws of sockets) {
+        try {
+          ws.close(4001, 'idle');
+        } catch {
+          /* already closed */
+        }
+      }
+    }
+    // Deleting 'created' also makes reconnects (older clients retry on any close) find no room.
     await this.ctx.storage.deleteAll();
   }
 }

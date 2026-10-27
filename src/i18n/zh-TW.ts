@@ -100,6 +100,7 @@ export const zhTW: Strings = {
   'online.hostLeft': '房主已斷線。',
   'online.hostWaiting': '等待對方回來…',
   'online.hostGone': '房主已離開對局。',
+  'online.idleClosed': '房間 15 分鐘無人操作，已關閉。',
   'online.continueAlone': '單人繼續',
   'online.waitingHostNext': '等待房主…',
   'online.youAre': '你是玩家 {n}',

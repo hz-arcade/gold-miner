@@ -156,11 +156,18 @@ async function startHosting(): Promise<void> {
   }
   const resumeSave: SaveState | null = overlay.pendingSave;
   let resume = !!resumeSave;
+  const continueAlone = () => {
+    const save = host?.game.save ?? localGame.save;
+    endOnline();
+    localGame.continueGame({ ...save, players: 1 });
+  };
   overlay.lobby({ status: 'preparing', onRetry: startHosting, onCancel: cancel });
   let link: RelayLink;
   try {
     const code = await createRoom();
     link = new RelayLink('host', code);
+    // Still in the lobby: nothing to continue. In a game: keep the progress, play solo.
+    link.onIdle = () => overlay.roomIdle(cancel, host ? continueAlone : undefined);
     pendingLink = link;
     await link.connect();
   } catch {
@@ -201,14 +208,7 @@ async function startHosting(): Promise<void> {
     host = new HostSession(
       link,
       uiEvents,
-      () => overlay.peerLeft(
-        () => {
-          const save = host?.game.save ?? localGame.save;
-          endOnline();
-          localGame.continueGame({ ...save, players: 1 });
-        },
-        () => localGame.quitToMenu(),
-      ),
+      () => overlay.peerLeft(continueAlone, () => localGame.quitToMenu()),
       () => {
         overlay.toast(t('online.peerBack'));
         // Back to whatever the game state's overlay is (paused, most likely).
@@ -249,6 +249,7 @@ async function startJoining(code: string): Promise<void> {
       return;
     }
     link = new RelayLink('guest', code);
+    link.onIdle = () => overlay.roomIdle(cancel);
     pendingLink = link;
     await link.connect();
   } catch {

@@ -100,6 +100,7 @@ export const zhCN: Strings = {
   'online.hostLeft': '房主已断开连接。',
   'online.hostWaiting': '等待对方回来…',
   'online.hostGone': '房主已离开对局。',
+  'online.idleClosed': '房间 15 分钟无人操作，已关闭。',
   'online.continueAlone': '单人继续',
   'online.waitingHostNext': '等待房主…',
   'online.youAre': '你是玩家 {n}',

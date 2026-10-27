@@ -457,6 +457,18 @@ export class Overlay {
     });
   }
 
+  /** Either side: the relay closed the room after 15 minutes without input. */
+  roomIdle(onQuit: () => void, onAlone?: () => void): void {
+    this.show((p) => {
+      p.appendChild(el('h2', undefined, t('online.title')));
+      p.appendChild(el('p', undefined, t('online.idleClosed')));
+      const row = el('div', 'row');
+      if (onAlone) row.appendChild(button(t('online.continueAlone'), 'secondary', onAlone));
+      row.appendChild(button(t('pause.quit'), onAlone ? 'secondary' : 'primary', onQuit));
+      p.appendChild(row);
+    });
+  }
+
   /** Either side: our own socket is reconnecting. */
   reconnecting(onQuit: () => void): void {
     this.show((p) => {

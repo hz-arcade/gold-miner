@@ -13,6 +13,7 @@ export const zhCN: Strings = {
   'menu.on': '开',
   'menu.off': '关',
   'menu.badLink': '该链接不是有效的存档。',
+  'menu.arcade': '返回游戏厅',
 
   'hud.money': '金钱',
   'hud.goal': '目标',

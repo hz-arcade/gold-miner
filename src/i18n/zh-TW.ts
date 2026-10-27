@@ -13,6 +13,7 @@ export const zhTW: Strings = {
   'menu.on': '開',
   'menu.off': '關',
   'menu.badLink': '此連結不是有效的存檔。',
+  'menu.arcade': '返回遊戲廳',
 
   'hud.money': '金錢',
   'hud.goal': '目標',

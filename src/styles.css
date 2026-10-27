@@ -165,6 +165,23 @@ body.two-local #pauseBtn:active { transform: translate(-50%, 2px); }
 .lang-item:hover { background: rgba(122, 75, 28, 0.12); }
 .lang-item.active { background: linear-gradient(#ffd51c, #e9a10c); }
 .lang-item.active::after { content: '✓'; float: right; }
+/* Back to the HZ Arcade catalog (main menu only) */
+.arcade-row { margin-top: 12px; }
+.arcade-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  color: var(--brown);
+  font: 700 14px var(--font);
+  text-decoration: none;
+  opacity: 0.75;
+  touch-action: manipulation;
+}
+.arcade-link svg { flex: none; }
+.arcade-link:hover { opacity: 1; text-decoration: underline; background: rgba(122, 75, 28, 0.08); }
+.arcade-link:focus-visible { opacity: 1; outline: 3px solid #7a4b1c; outline-offset: 2px; }
 .big-money { font-size: clamp(28px, 6vw, 40px); font-weight: 800; color: #1a7b2a; margin: 8px 0; }
 
 /* Shop */

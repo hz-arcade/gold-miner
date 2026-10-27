@@ -11,6 +11,7 @@ export const en = {
   'menu.on': 'On',
   'menu.off': 'Off',
   'menu.badLink': 'That link is not a valid saved game.',
+  'menu.arcade': 'Back to arcade',
 
   'hud.money': 'Money',
   'hud.goal': 'Goal',

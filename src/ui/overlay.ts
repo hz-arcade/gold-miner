@@ -25,6 +25,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 const GLOBE_ICON =
   '<svg class="globe" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="2"/><ellipse cx="12" cy="12" rx="4" ry="9.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M2.5 12h19M4 7.5h16M4 16.5h16" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
 
+const BACK_ICON =
+  '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
 function button(text: string, cls: string, onClick: () => void): HTMLButtonElement {
   const b = el('button', `btn ${cls}`.trim(), text);
   b.type = 'button';
@@ -74,7 +77,7 @@ export class Overlay {
     this.root.onpointerdown = onBackdrop
       ? (ev) => {
           // Tap anywhere that is not a control counts as the primary action.
-          if ((ev.target as HTMLElement).closest('button, input')) return;
+          if ((ev.target as HTMLElement).closest('button, input, a')) return;
           ev.preventDefault();
           onBackdrop();
         }
@@ -172,7 +175,22 @@ export class Overlay {
       row.appendChild(this.soundButton());
       p.appendChild(row);
       p.appendChild(this.langRow());
+      p.appendChild(this.arcadeLink());
     });
+  }
+
+  /** Plain link back to the HZ Arcade catalog at the site root (main menu only). */
+  private arcadeLink(): HTMLElement {
+    const wrap = el('div', 'arcade-row');
+    const a = el('a', 'arcade-link');
+    a.href = '/';
+    a.innerHTML = BACK_ICON;
+    a.appendChild(el('span', undefined, t('menu.arcade')));
+    // Keep taps/keys on the link from reaching any game input handlers.
+    a.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+    a.addEventListener('keydown', (ev) => ev.stopPropagation());
+    wrap.appendChild(a);
+    return wrap;
   }
 
   levelIntro(): void {

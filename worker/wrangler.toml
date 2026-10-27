@@ -14,5 +14,23 @@ bindings = [{ name = "ROOMS", class_name = "Room" }]
 tag = "v1"
 new_sqlite_classes = ["Room"]
 
+# Per-IP limits, keyed on cf-connecting-ip. Periods can only be 10 or 60 seconds.
+[[ratelimits]]
+name = "CREATE_LIMIT"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
+
+[[ratelimits]]
+name = "REQUEST_LIMIT"
+namespace_id = "1002"
+simple = { limit = 60, period = 60 }
+
 [observability]
 enabled = true
+
+# Every relayed WebSocket message is its own Durable Object invocation, so invocation
+# logs cost one log event per message (a single game streams 20/s, ~72k an hour).
+# Cloudflare reported 241.5k events on 2026-10-26, past the free daily allowance.
+# Only explicit console lines are kept: one summary per closed socket, plus rate-limit hits.
+[observability.logs]
+invocation_logs = false

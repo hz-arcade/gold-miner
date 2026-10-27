@@ -5,6 +5,8 @@ import type { RelayLink } from './RelayLink';
 import type { SaveState } from '../game/save';
 
 const SNAPSHOT_HZ = 20;
+/** The level intro only swings the hooks, which the guest simulates itself. */
+const INTRO_SNAPSHOT_HZ = 2;
 
 /**
  * Runs the authoritative two-player game on the host device and mirrors it to the
@@ -143,9 +145,13 @@ export class HostSession {
 
   /** Call every animation frame after game.frame(). */
   frame(dt: number): void {
-    if (this.game.state !== 'playing' && this.game.state !== 'levelIntro') return;
+    const state = this.game.state;
+    if (state !== 'playing' && state !== 'levelIntro') return;
+    // Nobody to mirror to: every relayed message costs a relay request, so stay quiet.
+    // A returning guest gets hello + phase on peer-joined and snapshots resume from there.
+    if (!this.link.peerPresent) return;
     this.acc += dt;
-    if (this.acc < 1 / SNAPSHOT_HZ) return;
+    if (this.acc < 1 / (state === 'playing' ? SNAPSHOT_HZ : INTRO_SNAPSHOT_HZ)) return;
     this.acc = 0;
     const g = this.game;
     const snap: Snapshot = {

@@ -12,6 +12,10 @@ import { DurableObject } from 'cloudflare:workers';
 export interface Env {
   ROOMS: DurableObjectNamespace<Room>;
   ALLOWED_ORIGINS?: string;
+  /** Per IP: room creations. */
+  CREATE_LIMIT: RateLimit;
+  /** Per IP: room lookups and WebSocket connects. */
+  REQUEST_LIMIT: RateLimit;
 }
 
 // No 0/O/1/I so codes can be read out loud or typed from a screen.
@@ -21,6 +25,14 @@ const CODE_LEN = 6;
 const IDLE_TTL_MS = 2 * 60 * 60 * 1000;
 /** A freshly created room the host never connected to expires sooner. */
 const UNUSED_TTL_MS = 10 * 60 * 1000;
+/**
+ * Per-socket message budget (token bucket). The host streams 20 snapshots/s plus a few
+ * events, the guest sends only taps, so this leaves plenty of headroom for real play.
+ */
+const MSG_RATE_PER_S = 40;
+const MSG_BURST = 120;
+/** A socket that keeps going past its budget after this many dropped messages is closed. */
+const MSG_DROP_CLOSE = 200;
 
 function randomCode(): string {
   const bytes = new Uint8Array(CODE_LEN);
@@ -30,6 +42,20 @@ function randomCode(): string {
 
 function json(data: unknown, status = 200, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json', ...extra } });
+}
+
+function clientIp(req: Request): string {
+  return req.headers.get('cf-connecting-ip') ?? 'unknown';
+}
+
+/** Rate-limit log lines are themselves capped: at most one per IP per minute per isolate. */
+const lastLimitLog = new Map<string, number>();
+function logLimited(ip: string, what: string): void {
+  const now = Date.now();
+  if ((lastLimitLog.get(ip) ?? 0) > now - 60_000) return;
+  if (lastLimitLog.size > 1000) lastLimitLog.clear();
+  lastLimitLog.set(ip, now);
+  console.warn(JSON.stringify({ ev: 'rate-limited', ip, what }));
 }
 
 function originAllowed(req: Request, env: Env): boolean {
@@ -57,7 +83,15 @@ export default {
     if (url.pathname === '/healthz') return json({ ok: true }, 200, cors(req));
     if (!originAllowed(req, env)) return json({ error: 'origin' }, 403);
 
-    if (req.method === 'POST' && url.pathname === '/rooms') {
+    const ip = clientIp(req);
+    const creating = req.method === 'POST' && url.pathname === '/rooms';
+    const limiter = creating ? env.CREATE_LIMIT : env.REQUEST_LIMIT;
+    if (!(await limiter.limit({ key: ip })).success) {
+      logLimited(ip, creating ? 'create' : 'request');
+      return json({ error: 'rate-limited' }, 429, { ...cors(req), 'retry-after': '60' });
+    }
+
+    if (creating) {
       // Retry on the (astronomically unlikely) collision with a live room.
       for (let i = 0; i < 5; i++) {
         const code = randomCode();
@@ -87,10 +121,23 @@ export default {
 type Role = 'host' | 'guest';
 
 interface Attachment {
+  room: string;
   role: Role;
+  ip: string;
+  since: number;
+}
+
+/** In-memory per-socket counters. Lost if the object hibernates, which only happens when idle. */
+interface Usage {
+  tokens: number;
+  last: number;
+  msgs: number;
+  dropped: number;
 }
 
 export class Room extends DurableObject<Env> {
+  private usage = new Map<WebSocket, Usage>();
+
   /** Host creates the room. Returns false if the code is already in use. */
   async create(): Promise<boolean> {
     const existing = await this.ctx.storage.get<number>('created');
@@ -120,7 +167,9 @@ export class Room extends DurableObject<Env> {
   override async fetch(req: Request): Promise<Response> {
     const created = await this.ctx.storage.get<number>('created');
     if (!created) return json({ error: 'no-room' }, 404);
-    const role = new URL(req.url).searchParams.get('role') as Role;
+    const url = new URL(req.url);
+    const role = url.searchParams.get('role') as Role;
+    const room = url.pathname.split('/')[2] ?? '';
 
     // A reconnecting player replaces their previous socket; a stranger is refused
     // when the seat is taken.
@@ -136,7 +185,7 @@ export class Room extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [client, server] = [pair[0], pair[1]];
     this.ctx.acceptWebSocket(server, [role]);
-    server.serializeAttachment({ role } satisfies Attachment);
+    server.serializeAttachment({ room, role, ip: clientIp(req), since: Date.now() } satisfies Attachment);
     // Keepalive without waking the object: the runtime answers pings itself.
     this.ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
     await this.ctx.storage.deleteAlarm();
@@ -151,6 +200,17 @@ export class Room extends DurableObject<Env> {
     if (typeof message !== 'string' || message.length > 16384) return;
     const a = ws.deserializeAttachment() as Attachment | null;
     if (!a) return;
+    if (!this.spend(ws)) {
+      const u = this.usage.get(ws)!;
+      if (u.dropped === MSG_DROP_CLOSE) {
+        try {
+          ws.close(4008, 'rate-limited'); // webSocketClose follows and logs it
+        } catch {
+          /* already closed */
+        }
+      }
+      return;
+    }
     const peer = this.socketFor(a.role === 'host' ? 'guest' : 'host');
     if (peer) {
       try {
@@ -159,6 +219,25 @@ export class Room extends DurableObject<Env> {
         /* peer is gone; close event will follow */
       }
     }
+  }
+
+  /** Takes one message from the socket's bucket; false when it is over budget. */
+  private spend(ws: WebSocket): boolean {
+    const now = Date.now();
+    let u = this.usage.get(ws);
+    if (!u) {
+      u = { tokens: MSG_BURST, last: now, msgs: 0, dropped: 0 };
+      this.usage.set(ws, u);
+    }
+    u.tokens = Math.min(MSG_BURST, u.tokens + ((now - u.last) / 1000) * MSG_RATE_PER_S);
+    u.last = now;
+    if (u.tokens < 1) {
+      u.dropped += 1;
+      return false;
+    }
+    u.tokens -= 1;
+    u.msgs += 1;
+    return true;
   }
 
   override async webSocketClose(ws: WebSocket, code: number): Promise<void> {
@@ -171,6 +250,23 @@ export class Room extends DurableObject<Env> {
 
   private async dropped(ws: WebSocket, code: number): Promise<void> {
     const a = ws.deserializeAttachment() as Attachment | null;
+    const u = this.usage.get(ws);
+    this.usage.delete(ws);
+    if (a) {
+      // The one log line per session, so usage can be traced to a room and an IP.
+      console.log(
+        JSON.stringify({
+          ev: 'socket-closed',
+          room: a.room,
+          role: a.role,
+          ip: a.ip,
+          code,
+          secs: a.since ? Math.round((Date.now() - a.since) / 1000) : null,
+          msgs: u?.msgs ?? 0,
+          dropped: u?.dropped ?? 0,
+        }),
+      );
+    }
     try {
       ws.close(1000, 'bye');
     } catch {

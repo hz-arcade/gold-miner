@@ -67,6 +67,7 @@ export const zhTW: Strings = {
   'bag.nothing': '空袋子……',
 
   'hud.player': '玩家 {n}',
+  'menu.onePlayer': '單人模式',
   'menu.twoPlayers': '雙人模式',
   'menu.localCoop': '同螢幕雙人',
   'menu.localCoopHint': '點擊螢幕左半邊放玩家 1 的鉤子，右半邊放玩家 2 的鉤子。鍵盤：S / W 與 ↓ / ↑。',

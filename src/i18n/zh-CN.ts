@@ -67,6 +67,7 @@ export const zhCN: Strings = {
   'bag.nothing': '空袋子……',
 
   'hud.player': '玩家 {n}',
+  'menu.onePlayer': '单人模式',
   'menu.twoPlayers': '双人模式',
   'menu.localCoop': '同屏双人',
   'menu.localCoopHint': '点击屏幕左半边放玩家 1 的钩子，右半边放玩家 2 的钩子。键盘：S / W 与 ↓ / ↑。',

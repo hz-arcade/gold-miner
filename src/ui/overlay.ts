@@ -145,31 +145,61 @@ export class Overlay {
     return b;
   }
 
+  /** Which half of the main menu is showing. */
+  private menuMode: 1 | 2 = 1;
+
+  /** Two-button switch between the single-player and two-player menus. */
+  private modeSwitch(): HTMLElement {
+    const wrap = el('div', 'mode-switch');
+    wrap.setAttribute('role', 'group');
+    const opts: [1 | 2, StringKey][] = [
+      [1, 'menu.onePlayer'],
+      [2, 'menu.twoPlayers'],
+    ];
+    for (const [mode, key] of opts) {
+      const on = this.menuMode === mode;
+      const b = button(t(key), `secondary mode-btn${on ? ' active' : ''}`, () => {
+        if (this.menuMode === mode) return;
+        this.menuMode = mode;
+        this.current?.();
+      });
+      b.setAttribute('aria-pressed', String(on));
+      wrap.appendChild(b);
+    }
+    return wrap;
+  }
+
   menu(): void {
+    // Open on the side of the saved game, so Continue is right there; otherwise single player.
+    this.menuMode = this.pendingSave?.players ?? 1;
     this.show((p) => {
       p.appendChild(el('h1', undefined, t('app.title')));
-      const s = this.pendingSave;
+      p.appendChild(this.modeSwitch());
+      const two = this.menuMode === 2;
+      const s = this.pendingSave?.players === this.menuMode ? this.pendingSave : null;
       if (s) {
         p.appendChild(button(s.players === 2 ? t('menu.continueCoop') : t('menu.continue'), 'primary', () => this.actions.continueGame(s)));
         p.appendChild(el('p', 'muted', t('menu.continueInfo', { level: s.level, money: s.money })));
       }
-      const alt = this.alternativeSave;
+      const alt = this.alternativeSave?.players === this.menuMode ? this.alternativeSave : null;
       if (alt) {
         p.appendChild(button(t('menu.continueOther'), 'secondary', () => this.actions.continueGame(alt)));
         p.appendChild(el('p', 'muted', t('menu.continueInfo', { level: alt.level, money: alt.money })));
       }
-      p.appendChild(button(t('menu.newGame'), s ? '' : 'primary', () => this.actions.newGame(1)));
-      p.appendChild(el('h2', undefined, t('menu.twoPlayers'))).style.marginTop = '16px';
-      const two = el('div', 'row');
-      two.appendChild(button(t('menu.localCoop'), 'secondary', () => this.actions.newGame(2)));
-      two.appendChild(button(t('menu.createOnline'), 'secondary', () => this.actions.createOnline()));
-      two.appendChild(button(t('menu.joinCode'), 'secondary', () => this.actions.joinWithCode()));
-      p.appendChild(two);
+      if (two) {
+        const row2 = el('div', 'row');
+        row2.appendChild(button(t('menu.localCoop'), s ? 'secondary' : 'primary', () => this.actions.newGame(2)));
+        row2.appendChild(button(t('menu.createOnline'), 'secondary', () => this.actions.createOnline()));
+        row2.appendChild(button(t('menu.joinCode'), 'secondary', () => this.actions.joinWithCode()));
+        p.appendChild(row2);
+      } else {
+        p.appendChild(button(t('menu.newGame'), s ? '' : 'primary', () => this.actions.newGame(1)));
+      }
       const how = el('p', 'muted');
       how.textContent = this.actions.isTouch() ? t('menu.howToMobile') : t('menu.howToDesktop');
       p.appendChild(el('h2', undefined, t('menu.howTo'))).style.marginTop = '16px';
       p.appendChild(how);
-      p.appendChild(el('p', 'muted', t('menu.localCoopHint')));
+      if (two) p.appendChild(el('p', 'muted', t('menu.localCoopHint')));
       p.appendChild(el('p', 'muted', t('menu.saveHint')));
       const row = el('div', 'row');
       row.appendChild(this.soundButton());

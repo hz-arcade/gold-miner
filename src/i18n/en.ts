@@ -65,6 +65,7 @@ export const en = {
   'bag.nothing': 'Empty bag…',
 
   'hud.player': 'Player {n}',
+  'menu.onePlayer': 'Single player',
   'menu.twoPlayers': 'Two players',
   'menu.localCoop': 'Same screen',
   'menu.localCoopHint': 'Left half of the screen fires player 1, right half player 2. Keyboard: S / W and ↓ / ↑.',

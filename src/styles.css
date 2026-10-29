@@ -130,6 +130,10 @@ body.two-local #pauseBtn:active { transform: translate(-50%, 2px); }
 .btn.secondary { background: linear-gradient(#fff4d1, #ecd9a6); font-size: 16px; padding: 9px 16px; min-width: 0; }
 .btn.primary { background: linear-gradient(#8fe08a, #3fae3a); color: #fff; text-shadow: 0 1px 0 #1c6d19; }
 .row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin-top: 10px; }
+/* Single player / Two players switch at the top of the main menu */
+.mode-switch { display: flex; justify-content: center; gap: 8px; margin: 4px 0 8px; }
+.mode-switch .mode-btn { margin: 0; }
+.mode-switch .mode-btn.active { background: linear-gradient(#ffd51c, #e9a10c); }
 /* Language dropdown */
 .lang-menu { position: relative; display: inline-block; margin-top: 14px; }
 .lang-btn { display: inline-flex; align-items: center; gap: 8px; margin: 0; }
